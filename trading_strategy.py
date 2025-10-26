@@ -3,61 +3,94 @@ import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
 
-# Download 5 years of MSFT data
-def get_stock_data(ticker, period="5y"):
-    stock = yf.Ticker(ticker)
-    data = stock.history(period=period)
-    return data
+# Download data for multiple stocks
+def get_stock_data(tickers, period="5y"):
+    all_data = {}
+    for ticker in tickers:
+        stock = yf.Ticker(ticker)
+        data = stock.history(period=period)
+        all_data[ticker] = data
+    return all_data
 
-# Calculate moving averages
-def calculate_moving_averages(data):
-    data['MA50'] = data['Close'].rolling(window=50).mean()
-    data['MA200'] = data['Close'].rolling(window=200).mean()
-    return data
+# Calculate moving averages for each stock
+def calculate_moving_averages(all_data):
+    for ticker, data in all_data.items():
+        data['MA50'] = data['Close'].rolling(window=50).mean()
+        data['MA200'] = data['Close'].rolling(window=200).mean()
+        all_data[ticker] = data
+    return all_data
 
-# Identify golden cross (buy signals)
-def identify_golden_cross(data):
-    data['Signal'] = 0  # Initialize signal column with 0
-    # Golden Cross occurs when MA50 crosses above MA200
-    data['GoldenCross'] = (data['MA50'] > data['MA200']) & (data['MA50'].shift(1) <= data['MA200'].shift(1))
-    return data
+# Identify golden cross (buy signals) for each stock
+def identify_golden_cross(all_data):
+    for ticker, data in all_data.items():
+        data['Signal'] = 0
+        data['GoldenCross'] = (data['MA50'] > data['MA200']) & (data['MA50'].shift(1) <= data['MA200'].shift(1))
+        all_data[ticker] = data
+    return all_data
 
-# Implement trading strategy
-def implement_strategy(data):
+# Implement trading strategy for each stock
+def implement_strategy(all_data, stop_loss_pct=0.10, take_profit_pct=0.15, max_holding_days=60):
     positions = []
+    for ticker, data in all_data.items():
+        data = data.iloc[200:].copy()
+        buy_dates = data[data['GoldenCross'] == True].index.tolist()
+        for buy_date in buy_dates:
+            buy_price = data.loc[buy_date, 'Close']
+            target_price = buy_price * (1 + take_profit_pct)
+            stop_loss_price = buy_price * (1 - stop_loss_pct)
+            max_sell_date = buy_date + pd.Timedelta(days=max_holding_days)
+            sell_period = data.loc[buy_date:max_sell_date].copy()
+            stop_loss_hit = sell_period[sell_period['Close'] <= stop_loss_price]
+            target_reached = sell_period[sell_period['Close'] >= target_price]
+            if not stop_loss_hit.empty:
+                sell_date = stop_loss_hit.index[0]
+                sell_price = stop_loss_hit.loc[sell_date, 'Close']
+                sell_reason = "Stop-loss hit"
+            elif not target_reached.empty:
+                sell_date = target_reached.index[0]
+                sell_price = target_reached.loc[sell_date, 'Close']
+                sell_reason = "Target reached"
+            else:
+                sell_date_candidates = sell_period.index.tolist()
+                if sell_date_candidates:
+                    sell_date = sell_date_candidates[-1]
+                    sell_price = sell_period.loc[sell_date, 'Close']
+                    sell_reason = "Max holding period"
+                else:
+                    # If no sell date candidates, skip this trade
+                    continue
+            holding_days = (sell_date - buy_date).days
+            profit_pct = (sell_price - buy_price) / buy_price * 100
+            positions.append({
+                'Ticker': ticker,
+                'BuyDate': buy_date,
+                'BuyPrice': buy_price,
+                'SellDate': sell_date,
+                'SellPrice': sell_price,
+                'SellReason': sell_reason,
+                'HoldingDays': holding_days,
+                'ProfitPct': profit_pct
+            })
+    return pd.DataFrame(positions)
 
-    # Need at least 200 days to calculate the 200-day MA
-    data = data.iloc[200:].copy()
+# Portfolio analytics
+def portfolio_metrics(positions):
+    if positions.empty:
+        return {}
+    total_return = positions['ProfitPct'].mean()
+    volatility = positions['ProfitPct'].std()
+    sharpe_ratio = total_return / volatility if volatility != 0 else 0
+    return {
+        'TotalReturn': total_return,
+        'Volatility': volatility,
+        'SharpeRatio': sharpe_ratio,
+        'NumTrades': len(positions)
+    }
 
-    buy_dates = data[data['GoldenCross'] == True].index.tolist()
-
-
-    for buy_date in buy_dates:
-        buy_price = data.loc[buy_date, 'Close']
-        target_price = buy_price * 1.15  # Take-profit (15%)
-        stop_loss_price = buy_price * 0.90  # Stop-loss (10%)
-        max_sell_date = buy_date + pd.Timedelta(days=60)
-        sell_period = data.loc[buy_date:max_sell_date].copy()
-
-        # Check for stop-loss first
-        stop_loss_hit = sell_period[sell_period['Close'] <= stop_loss_price]
-        target_reached = sell_period[sell_period['Close'] >= target_price]
-
-        if not stop_loss_hit.empty:
-            # Sell at first date stop-loss is hit
-            sell_date = stop_loss_hit.index[0]
-            sell_price = stop_loss_hit.loc[sell_date, 'Close']
-            sell_reason = "Stop-loss hit"
-        elif not target_reached.empty:
-            # Sell at first date target is reached
-            sell_date = target_reached.index[0]
-            sell_price = target_reached.loc[sell_date, 'Close']
-            sell_reason = "Target reached"
-        else:
-            # Sell at end of maximum holding period
-            sell_date_candidates = sell_period.index.tolist()
-            if sell_date_candidates:
-                sell_date = sell_date_candidates[-1]
+# Placeholder for news & sentiment analysis
+def get_news_and_sentiment(ticker):
+    # To be implemented: fetch news and perform sentiment analysis
+    return {'news': [], 'sentiment': 0}
                 sell_price = data.loc[sell_date, 'Close']
                 sell_reason = "Max holding period"
             else:
