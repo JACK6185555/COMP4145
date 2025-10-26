@@ -1,62 +1,61 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from trading_strategy import main, analyze_results
+from trading_strategy import get_stock_data, calculate_moving_averages, identify_golden_cross, implement_strategy, portfolio_metrics
 
-st.set_page_config(page_title="Golden Cross Trading Dashboard", layout="wide")
+st.set_page_config(page_title="Portfolio Golden Cross Dashboard", layout="wide")
 
-positions = main()
-
-def load_data():
-    # Re-run backend to get all data
-    data = positions.copy()
-    return data
-
-def get_chart_data():
-    # Get price and MA data from backend
-    data = main.__globals__['get_stock_data']("MSFT")
-    data = main.__globals__['calculate_moving_averages'](data)
-    data = main.__globals__['identify_golden_cross'](data)
-    return data
+# Sidebar: manual entry of tickers
+st.sidebar.header("Portfolio Settings")
+tickers_input = st.sidebar.text_input("Enter stock tickers (comma separated)", value="MSFT,AAPL,GOOGL")
+tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 
 # Sidebar navigation
-page = st.sidebar.radio("Select Page", ["Price Chart", "Trade Statistics", "Detailed Trades", "Backtesting Module"])
+page = st.sidebar.radio("Select Page", ["Portfolio Chart", "Portfolio Statistics", "Detailed Trades", "Backtesting Module"])
 
-if page == "Price Chart":
-    st.title("Price Chart with Golden Cross Signals")
-    chart_data = get_chart_data()
-    fig, ax = plt.subplots(figsize=(14, 6))
-    ax.plot(chart_data.index, chart_data['Close'], label='Close Price', color='blue')
-    ax.plot(chart_data.index, chart_data['MA50'], label='MA50', color='orange')
-    ax.plot(chart_data.index, chart_data['MA200'], label='MA200', color='green')
+# Get and process data
+all_data = get_stock_data(tickers)
+all_data = calculate_moving_averages(all_data)
+all_data = identify_golden_cross(all_data)
+positions = implement_strategy(all_data)
 
-    # Buy points (Golden Cross)
-    buy_points = chart_data[chart_data['GoldenCross']]
-    ax.scatter(buy_points.index, buy_points['Close'], color='red', label='Buy Point', marker='o', s=60)
+if page == "Portfolio Chart":
+    st.title("Portfolio Price Charts with Golden Cross Signals")
+    for ticker in tickers:
+        if ticker in all_data:
+            st.subheader(f"{ticker} Price Chart")
+            data = all_data[ticker]
+            fig, ax = plt.subplots(figsize=(12, 5))
+            ax.plot(data.index, data['Close'], label='Close Price', color='blue')
+            ax.plot(data.index, data['MA50'], label='MA50', color='orange')
+            ax.plot(data.index, data['MA200'], label='MA200', color='green')
+            buy_points = data[data['GoldenCross']]
+            ax.scatter(buy_points.index, buy_points['Close'], color='red', label='Buy Point', marker='o', s=60)
+            sell_points = positions[positions['Ticker'] == ticker]
+            ax.scatter(sell_points['SellDate'], sell_points['SellPrice'], color='purple', label='Sell Point', marker='o', s=60)
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Price')
+            ax.legend()
+            st.pyplot(fig)
 
-    # Sell points (from positions)
-    sell_points = positions.copy()
-    ax.scatter(sell_points['SellDate'], sell_points['SellPrice'], color='purple', label='Sell Point', marker='o', s=60)
-
-    ax.set_xlabel('Date')
-    ax.set_ylabel('Price')
-    ax.legend()
-    st.pyplot(fig)
-
-
-elif page == "Trade Statistics":
+elif page == "Portfolio Statistics":
     st.title("Portfolio Trade Statistics Summary")
-    stats = analyze_results(positions)
-    total_trades = len(positions)
+    stats = portfolio_metrics(positions)
+    st.write(stats)
+    total_trades = stats.get('NumTrades', 0)
     win_trades = len(positions[positions['ProfitPct'] > 0])
     loss_trades = total_trades - win_trades
     win_rate = win_trades / total_trades * 100 if total_trades > 0 else 0
-    avg_profit = positions['ProfitPct'].mean()
+    avg_profit = positions['ProfitPct'].mean() if total_trades > 0 else 0
     avg_win = positions[positions['ProfitPct'] > 0]['ProfitPct'].mean() if win_trades > 0 else 0
     avg_loss = positions[positions['ProfitPct'] <= 0]['ProfitPct'].mean() if loss_trades > 0 else 0
-    avg_holding = positions['HoldingDays'].mean()
-    target_reached = len(positions[positions['SellReason'] == 'Target reached'])
-    max_period = len(positions[positions['SellReason'] == 'Max holding period'])
+    avg_holding = positions['HoldingDays'].mean() if total_trades > 0 else 0
+    st.markdown(f"**Total Trades:** {total_trades}")
+    st.markdown(f"**Win Rate:** {win_rate:.2f}%")
+    st.markdown(f"**Average Profit:** {avg_profit:.2f}%")
+    st.markdown(f"**Average Win:** {avg_win:.2f}%")
+    st.markdown(f"**Average Loss:** {avg_loss:.2f}%")
+    st.markdown(f"**Average Holding Days:** {avg_holding:.2f}")
 
     st.subheader("Portfolio Metrics")
     st.metric("Total Trades", total_trades)
