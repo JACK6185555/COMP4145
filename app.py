@@ -123,7 +123,7 @@ elif page == "Backtesting Module":
             else:
                 st.write(f"⚠️ get_stock_data({ticker}) did not return a DataFrame. Type:", type(data))
                 st.write("Returned value preview:", data)
-            st.write(data.head())
+    
             price_col = 'Adj Close' if 'Adj Close' in data.columns else 'Close'
             data['MA_short'] = data[price_col].rolling(window=int(ma_short)).mean()
             data['MA_long'] = data[price_col].rolling(window=int(ma_long)).mean()
