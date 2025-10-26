@@ -28,12 +28,17 @@ def identify_golden_cross(all_data):
         all_data[ticker] = data
     return all_data
 
-# Implement trading strategy for each stock
-def implement_strategy(all_data, stop_loss_pct=0.10, take_profit_pct=0.15, max_holding_days=60):
+
+# Implement trading strategy for each stock with custom risk management
+def implement_strategy(all_data, stop_loss_dict=None, take_profit_dict=None, max_holding_days=60):
     positions = []
+    stop_loss_dict = stop_loss_dict or {}
+    take_profit_dict = take_profit_dict or {}
     for ticker, data in all_data.items():
         data = data.iloc[200:].copy()
         buy_dates = data[data['GoldenCross'] == True].index.tolist()
+        stop_loss_pct = stop_loss_dict.get(ticker, 0.10)
+        take_profit_pct = take_profit_dict.get(ticker, 0.15)
         for buy_date in buy_dates:
             buy_price = data.loc[buy_date, 'Close']
             target_price = buy_price * (1 + take_profit_pct)
@@ -57,7 +62,6 @@ def implement_strategy(all_data, stop_loss_pct=0.10, take_profit_pct=0.15, max_h
                     sell_price = sell_period.loc[sell_date, 'Close']
                     sell_reason = "Max holding period"
                 else:
-                    # If no sell date candidates, skip this trade
                     continue
             holding_days = (sell_date - buy_date).days
             profit_pct = (sell_price - buy_price) / buy_price * 100
@@ -69,9 +73,26 @@ def implement_strategy(all_data, stop_loss_pct=0.10, take_profit_pct=0.15, max_h
                 'SellPrice': sell_price,
                 'SellReason': sell_reason,
                 'HoldingDays': holding_days,
-                'ProfitPct': profit_pct
+                'ProfitPct': profit_pct,
+                'StopLossPct': stop_loss_pct,
+                'TakeProfitPct': take_profit_pct
             })
     return pd.DataFrame(positions)
+
+# Portfolio value over time
+def portfolio_value_over_time(all_data, positions):
+    # Build a time series of portfolio value
+    value_series = pd.Series(dtype=float)
+    for ticker, data in all_data.items():
+        trades = positions[positions['Ticker'] == ticker]
+        for _, trade in trades.iterrows():
+            buy_date = trade['BuyDate']
+            sell_date = trade['SellDate']
+            # Mark holding period
+            held_period = data.loc[buy_date:sell_date]['Close']
+            value_series = value_series.add(held_period, fill_value=0)
+    value_series = value_series.sort_index()
+    return value_series
 
 # Portfolio analytics
 def portfolio_metrics(positions):
@@ -91,22 +112,39 @@ def portfolio_metrics(positions):
 def get_news_and_sentiment(ticker):
     # To be implemented: fetch news and perform sentiment analysis
     return {'news': [], 'sentiment': 0}
-                sell_price = data.loc[sell_date, 'Close']
-                sell_reason = "Max holding period"
-            else:
-                continue
 
-        holding_days = (sell_date - buy_date).days
-        profit_pct = (sell_price / buy_price - 1) * 100
-        positions.append({
-            'BuyDate': buy_date,
-            'BuyPrice': buy_price,
-            'SellDate': sell_date,
-            'SellPrice': sell_price,
-            'HoldingDays': holding_days,
-            'ProfitPct': profit_pct,
-            'SellReason': sell_reason
-        })
+
+def analyze_trades(data, max_holding_days=30):
+    """
+    Example function that identifies buy/sell points, calculates profit, 
+    and records trade details.
+    """
+    positions = []
+
+    for i in range(len(data) - 1):
+        buy_date = data.index[i]
+        buy_price = data.loc[buy_date, 'Close']
+
+        # Example condition: sell after max holding period
+        sell_date = buy_date + pd.Timedelta(days=max_holding_days)
+        if sell_date in data.index:
+            sell_price = data.loc[sell_date, 'Close']
+            sell_reason = "Max holding period"
+
+            holding_days = (sell_date - buy_date).days
+            profit_pct = (sell_price / buy_price - 1) * 100
+
+            positions.append({
+                'BuyDate': buy_date,
+                'BuyPrice': buy_price,
+                'SellDate': sell_date,
+                'SellPrice': sell_price,
+                'HoldingDays': holding_days,
+                'ProfitPct': profit_pct,
+                'SellReason': sell_reason
+            })
+        else:
+            continue
 
     return pd.DataFrame(positions)
 
