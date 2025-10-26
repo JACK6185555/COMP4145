@@ -5,6 +5,7 @@ from trading_strategy import get_stock_data, calculate_moving_averages, identify
 
 st.set_page_config(page_title="Portfolio Golden Cross Dashboard", layout="wide")
 
+
 # Sidebar: manual entry of tickers
 st.sidebar.header("Portfolio Settings")
 tickers_input = st.sidebar.text_input("Enter stock tickers (comma separated)", value="MSFT,AAPL,GOOGL")
@@ -50,12 +51,16 @@ elif page == "Portfolio Statistics":
     avg_win = positions[positions['ProfitPct'] > 0]['ProfitPct'].mean() if win_trades > 0 else 0
     avg_loss = positions[positions['ProfitPct'] <= 0]['ProfitPct'].mean() if loss_trades > 0 else 0
     avg_holding = positions['HoldingDays'].mean() if total_trades > 0 else 0
+    target_reached = len(positions[positions['SellReason'] == 'Target reached'])
+    max_period = len(positions[positions['SellReason'] == 'Max holding period'])
     st.markdown(f"**Total Trades:** {total_trades}")
     st.markdown(f"**Win Rate:** {win_rate:.2f}%")
     st.markdown(f"**Average Profit:** {avg_profit:.2f}%")
     st.markdown(f"**Average Win:** {avg_win:.2f}%")
     st.markdown(f"**Average Loss:** {avg_loss:.2f}%")
     st.markdown(f"**Average Holding Days:** {avg_holding:.2f}")
+    st.metric("Target Reached Trades", target_reached)
+    st.metric("Max Holding Period Trades", max_period)
 
     st.subheader("Portfolio Metrics")
     st.metric("Total Trades", total_trades)
@@ -113,8 +118,11 @@ elif page == "Backtesting Module":
         for ticker in tickers:
             data = get_stock_data(ticker)
             # Custom moving averages
-            data['MA_short'] = data['Close'].rolling(window=int(ma_short)).mean()
-            data['MA_long'] = data['Close'].rolling(window=int(ma_long)).mean()
+            st.write("Data columns:", data.columns)
+            st.write(data.head())
+            price_col = 'Adj Close' if 'Adj Close' in data.columns else 'Close'
+            data['MA_short'] = data[price_col].rolling(window=int(ma_short)).mean()
+            data['MA_long'] = data[price_col].rolling(window=int(ma_long)).mean()
             # Custom golden cross
             data['GoldenCross'] = (data['MA_short'] > data['MA_long']) & (data['MA_short'].shift(1) <= data['MA_long'].shift(1))
             # Custom strategy logic
