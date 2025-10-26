@@ -31,23 +31,24 @@ def implement_strategy(data):
 
     buy_dates = data[data['GoldenCross'] == True].index.tolist()
 
+
     for buy_date in buy_dates:
-        # Get buy price
         buy_price = data.loc[buy_date, 'Close']
-
-        # Calculate target sell price (15% profit)
-        target_price = buy_price * 1.15
-
-        # Set maximum holding period
+        target_price = buy_price * 1.15  # Take-profit (15%)
+        stop_loss_price = buy_price * 0.90  # Stop-loss (10%)
         max_sell_date = buy_date + pd.Timedelta(days=60)
-
-        # Get data slice for potential sell period
         sell_period = data.loc[buy_date:max_sell_date].copy()
 
-        # Check if target price is reached during the period
+        # Check for stop-loss first
+        stop_loss_hit = sell_period[sell_period['Close'] <= stop_loss_price]
         target_reached = sell_period[sell_period['Close'] >= target_price]
 
-        if not target_reached.empty:
+        if not stop_loss_hit.empty:
+            # Sell at first date stop-loss is hit
+            sell_date = stop_loss_hit.index[0]
+            sell_price = stop_loss_hit.loc[sell_date, 'Close']
+            sell_reason = "Stop-loss hit"
+        elif not target_reached.empty:
             # Sell at first date target is reached
             sell_date = target_reached.index[0]
             sell_price = target_reached.loc[sell_date, 'Close']
@@ -60,15 +61,10 @@ def implement_strategy(data):
                 sell_price = data.loc[sell_date, 'Close']
                 sell_reason = "Max holding period"
             else:
-                # Skip if no valid sell date (should not happen in practice)
                 continue
 
-        # Calculate holding period in calendar days
         holding_days = (sell_date - buy_date).days
-
-        # Calculate profit
         profit_pct = (sell_price / buy_price - 1) * 100
-
         positions.append({
             'BuyDate': buy_date,
             'BuyPrice': buy_price,
@@ -110,25 +106,26 @@ def analyze_results(positions):
     return positions
 
 # Main function
-def main():
-    # Get stock data
-    data = get_stock_data("MSFT")
 
-    # Calculate moving averages
-    data = calculate_moving_averages(data)
+# Enhanced main function for portfolio analysis
+def main(tickers=["MSFT", "AAPL", "TSLA"]):
+    all_positions = []
+    for ticker in tickers:
+        data = get_stock_data(ticker)
+        data = calculate_moving_averages(data)
+        data = identify_golden_cross(data)
+        positions = implement_strategy(data)
+        if not positions.empty:
+            positions["Ticker"] = ticker
+            all_positions.append(positions)
+    if all_positions:
+        portfolio_positions = pd.concat(all_positions, ignore_index=True)
+    else:
+        portfolio_positions = pd.DataFrame()
+    analyze_results(portfolio_positions)
+    return portfolio_positions
 
-    # Identify golden cross
-    data = identify_golden_cross(data)
-
-    # Implement strategy
-    positions = implement_strategy(data)
-
-    # Analyze results
-    analyze_results(positions)
-
-    # Return the detailed positions dataframe
-    return positions
-
-positions = main()
+# Example usage: portfolio of MSFT, AAPL, TSLA
+positions = main(["MSFT", "AAPL", "TSLA"])
 print("\nDetailed Trades:")
 print(positions.to_string())
