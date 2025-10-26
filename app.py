@@ -118,7 +118,11 @@ elif page == "Backtesting Module":
         for ticker in tickers:
             data = get_stock_data(ticker)
             # Custom moving averages
-            st.write("Data columns:", data.columns)
+            if isinstance(data, pd.DataFrame):
+                st.write("Data columns:", data.columns)
+            else:
+                st.write(f"⚠️ get_stock_data({ticker}) did not return a DataFrame. Type:", type(data))
+                st.write("Returned value preview:", data)
             st.write(data.head())
             price_col = 'Adj Close' if 'Adj Close' in data.columns else 'Close'
             data['MA_short'] = data[price_col].rolling(window=int(ma_short)).mean()
